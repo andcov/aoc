@@ -65,11 +65,10 @@ let rec process counts cards =
   | _ -> failwith "counts and cards do not match in length"
 
 let () =
-  let lines = read_lines "input.in" in
-  let cards = List.map lines ~f:line_to_card in
   let cards =
-    List.map cards ~f:(fun card ->
-        { card with nums = List.sort card.nums ~compare:Int.compare })
+    read_lines "input.in" |> List.map ~f:line_to_card
+    |> List.map ~f:(fun card ->
+           { card with nums = List.sort card.nums ~compare:Int.compare })
   in
   let sum1 =
     List.filter_map cards ~f:(fun card ->
