@@ -1,13 +1,18 @@
 (executable
  (name day1)
  (libraries core str)
- (preprocess
-  (pps ppx_deriving.show ppx_deriving.ord))
  (modules Day1))
 
 (executable
  (name day2)
  (libraries core str)
  (preprocess
-  (pps ppx_deriving.show ppx_deriving.ord))
+  (pps ppx_deriving.show))
  (modules Day2))
+
+(executable
+ (name day3)
+ (libraries core str)
+ (preprocess
+  (pps ppx_deriving.show))
+ (modules Day3))
