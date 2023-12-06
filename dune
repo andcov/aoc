@@ -23,3 +23,10 @@
  (preprocess
   (pps ppx_deriving.show))
  (modules Day4))
+
+(executable
+ (name day5)
+ (libraries core str)
+ (preprocess
+  (pps ppx_deriving.show ppx_jane))
+ (modules Day5))
