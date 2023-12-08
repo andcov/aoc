@@ -6,32 +6,34 @@
 (executable
  (name day02)
  (libraries core str)
- (preprocess
-  (pps ppx_deriving.show))
+ (preprocess (pps ppx_deriving.show))
  (modules Day02))
 
 (executable
  (name day03)
  (libraries core str)
- (preprocess
-  (pps ppx_deriving.show))
+ (preprocess (pps ppx_deriving.show))
  (modules Day03))
 
 (executable
  (name day04)
  (libraries core str)
- (preprocess
-  (pps ppx_deriving.show))
+ (preprocess (pps ppx_deriving.show))
  (modules Day04))
 
 (executable
  (name day05)
  (libraries core str)
- (preprocess
-  (pps ppx_deriving.show ppx_jane))
+ (preprocess (pps ppx_deriving.show ppx_jane))
  (modules Day05))
 
 (executable
  (name day06)
  (libraries core str)
  (modules Day06))
+
+(executable
+ (name day07)
+ (libraries core str)
+ (preprocess (pps ppx_deriving.enum ppx_deriving.show))
+ (modules Day07))
