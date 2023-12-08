@@ -1,10 +1,6 @@
 open Core
 
-let read_lines filename =
-  In_channel.with_file filename ~f:(fun input ->
-      In_channel.fold_lines input ~init:[] ~f:(fun l line ->
-          if String.is_empty line then l else line :: l))
-  |> List.rev
+let ( << ) f g x = f (g x)
 
 module Interval = struct
   type t = { l : int; r : int } [@@deriving sexp, show]
@@ -63,6 +59,7 @@ module Mapping = struct
 end
 
 let get_maps lines =
+  let lines = lines @ [ "map" ] in
   let all_maps, _ =
     List.fold lines ~init:([], []) ~f:(fun (all_maps, map) l ->
         if Str.string_match (Str.regexp ".*map.*") l 0 then (map :: all_maps, [])
@@ -152,7 +149,9 @@ let solve_part_2 seeds_intervals all_maps =
   min_int.l
 
 let () =
-  let lines = read_lines "input.in" @ [ "map" ] in
+  let lines =
+    In_channel.read_lines "input.in" |> List.filter ~f:(not << String.is_empty)
+  in
   let seeds = get_seeds @@ List.hd_exn lines in
   let seeds_intervals = get_seeds_intervals @@ List.hd_exn lines in
   let all_maps = get_maps @@ List.tl_exn lines in

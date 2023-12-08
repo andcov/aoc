@@ -1,9 +1,5 @@
 open Core
 
-let read_lines filename =
-  In_channel.with_file filename ~f:(fun input ->
-      In_channel.fold_lines input ~init:[] ~f:(fun l line -> line :: l))
-
 let find_digit_forward l only_nums =
   let digits =
     [ "one"; "two"; "three"; "four"; "five"; "six"; "seven"; "eight"; "nine" ]
@@ -47,7 +43,7 @@ let get_num l ~only_nums =
   (valuef * 10) + valueb
 
 let () =
-  let lines = read_lines "input.in" in
+  let lines = In_channel.read_lines "input.in" in
   let sum1 =
     List.map lines ~f:(get_num ~only_nums:true) |> List.fold ~init:0 ~f:( + )
   in

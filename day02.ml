@@ -1,10 +1,5 @@
 open Core
 
-let read_lines filename =
-  In_channel.with_file filename ~f:(fun input ->
-      In_channel.fold_lines input ~init:[] ~f:(fun l line -> line :: l))
-  |> List.rev
-
 type round = { red : int; green : int; blue : int } [@@deriving show]
 type game = { id : int; rounds : round list } [@@deriving show]
 
@@ -51,7 +46,7 @@ let power_of_min_set game =
   red * green * blue
 
 let () =
-  let lines = read_lines "input.in" in
+  let lines = In_channel.read_lines "input.in" in
   let games = List.map lines ~f:line_to_game in
   let sum1 =
     List.filter games ~f:game_is_possible

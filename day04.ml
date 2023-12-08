@@ -1,10 +1,5 @@
 open Core
 
-let read_lines filename =
-  In_channel.with_file filename ~f:(fun input ->
-      In_channel.fold_lines input ~init:[] ~f:(fun l line -> line :: l))
-  |> List.rev
-
 let ( << ) f g x = f (g x)
 
 type card = { winning_nums : int list; nums : int list } [@@deriving show]
@@ -66,7 +61,8 @@ let rec process counts cards =
 
 let () =
   let cards =
-    read_lines "input.in" |> List.map ~f:line_to_card
+    In_channel.read_lines "input.in"
+    |> List.map ~f:line_to_card
     |> List.map ~f:(fun card ->
            { card with nums = List.sort card.nums ~compare:Int.compare })
   in

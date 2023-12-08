@@ -1,10 +1,5 @@
 open Core
 
-let read_lines filename =
-  In_channel.with_file filename ~f:(fun input ->
-      In_channel.fold_lines input ~init:[] ~f:(fun l line -> line :: l))
-  |> List.rev
-
 type number = { row : int; start_col : int; end_col : int; num : int }
 [@@deriving show]
 
@@ -55,7 +50,7 @@ let is_valid_num sp_chars (num : number) : bool =
   List.exists sp_chars ~f:(num_touches_sp_char num)
 
 let () =
-  let lines = read_lines "input.in" in
+  let lines = In_channel.read_lines "input.in" in
   let nums =
     List.foldi lines ~init:[] ~f:(fun row acc l ->
         List.append (get_nums_from_line l row) acc)
