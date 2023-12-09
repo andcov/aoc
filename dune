@@ -34,6 +34,16 @@
 
 (executable
  (name day07)
- (libraries core str)
+ (libraries core)
  (preprocess (pps ppx_deriving.enum ppx_deriving.show))
  (modules Day07))
+
+(executable
+ (name day08)
+ (libraries core str)
+ (modules Day08))
+
+(executable
+ (name day09)
+ (libraries core)
+ (modules Day09))
