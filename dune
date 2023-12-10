@@ -47,3 +47,9 @@
  (name day09)
  (libraries core)
  (modules Day09))
+
+(executable
+ (name day10)
+ (libraries core)
+ (preprocess (pps ppx_deriving.eq))
+ (modules Day10))
