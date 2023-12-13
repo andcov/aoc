@@ -1,9 +1,5 @@
 open Core
 
-let ( <=> ) s e =
-  if s > e then failwith "start greater than end"
-  else List.init (e - s + 1) ~f:(fun n -> n + s)
-
 let read_lines =
   In_channel.read_lines "input.in"
   |> List.map ~f:(String.split ~on:' ')
@@ -26,10 +22,10 @@ let can_match string num =
 
 let dynamic line nums =
   let line = line ^ "." in
-  let nums = Array.of_list (nums @ [ -1 ]) |> Array.rev in
+  let nums = Array.of_list (nums @ [ 0 ]) |> Array.rev in
   let m = Array.length nums in
   let n = String.length line in
-  let table = Array.init m ~f:(fun _ -> Array.create ~len:(n + 1) 0) in
+  let table = Array.make_matrix ~dimx:m ~dimy:(n + 1) 0 in
 
   let j = ref (n - 1) in
   while
