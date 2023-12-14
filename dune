@@ -68,3 +68,8 @@
  (name day13)
  (libraries core)
  (modules Day13))
+
+(executable
+ (name day14)
+ (libraries core)
+ (modules Day14))

@@ -61,7 +61,7 @@ let is_sim_with_one_mistake mat axis =
   in
   check 1 0
 
-let solve groups ~find_fn ~sim_fn =
+let solve groups find_fn sim_fn =
   List.fold ~init:0 groups ~f:(fun acc (a, b) ->
       let eq_rows = find_fn a in
       let horiz =
@@ -76,8 +76,6 @@ let solve groups ~find_fn ~sim_fn =
 
 let () =
   let groups = read_lines in
-  let sum1 = solve groups ~find_fn:find_adj_eq ~sim_fn:is_sim in
-  let sum2 =
-    solve groups ~find_fn:find_adj_eq_or_one_mis ~sim_fn:is_sim_with_one_mistake
-  in
+  let sum1 = solve groups find_adj_eq is_sim in
+  let sum2 = solve groups find_adj_eq_or_one_mis is_sim_with_one_mistake in
   printf "Part 1: %d\nPart 2: %d\n" sum1 sum2
