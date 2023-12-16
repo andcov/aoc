@@ -78,3 +78,9 @@
  (name day15)
  (libraries core)
  (modules Day15))
+
+(executable
+ (name day16)
+ (libraries core)
+ (preprocess (pps ppx_deriving.show ppx_deriving.eq ppx_deriving.ord ppx_jane))
+ (modules Day16))
