@@ -117,7 +117,7 @@ let rec tick map beams visited =
       tick map beams' visited'
 
 let beamset_to_posset (set : BeamSet.t) =
-  Set.fold set ~init:PosSet.empty ~f:(fun acc (r, c, d) -> Set.add acc (r, c))
+  Set.fold set ~init:PosSet.empty ~f:(fun acc (r, c, _) -> Set.add acc (r, c))
 
 let get_starts map =
   let m, n = size map in
