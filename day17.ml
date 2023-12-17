@@ -14,23 +14,15 @@ let read_input =
 
 let size map = (Array.length map, Array.length map.(0))
 
-type ori = V | H [@@deriving sexp, show, eq, ord]
+type ori = V | H [@@deriving sexp, show, eq, ord, hash]
 
 let rotate = function V -> H | H -> V
 
 module Vertex = struct
-  type t = int * int * ori [@@deriving sexp, show, eq, ord]
-end
-
-module VCost = struct
-  type t = Vertex.t * int [@@deriving sexp, show, eq]
-
-  let compare (v1, c1) (v2, c2) =
-    if c1 = c2 then Vertex.compare v1 v2 else Int.compare c1 c2
+  type t = int * int * ori [@@deriving sexp, show, eq, ord, hash]
 end
 
 module VMap = Map.Make (Vertex)
-module VCSet = Set.Make (VCost)
 
 let rec get_cost map (r, c, ori) delta =
   match delta with
@@ -75,39 +67,39 @@ let get_ultra_neighbours map (r, c, ori) =
       else None)
 
 let get_dist dists (r, c) =
-  [ Map.find dists (r, c, V); Map.find dists (r, c, H) ]
+  [ Hashtbl.find dists (r, c, V); Hashtbl.find dists (r, c, H) ]
   |> List.filter_map ~f:Fn.id
   |> List.min_elt ~compare:Int.compare
 
-let dijkstra' map neigh_fun s e =
-  let init_dists = VMap.empty in
-  let init_heap = VCSet.empty in
-  let init_heap = Set.add init_heap (s, 0) in
-  let rec relax dists heap =
+let compare_v_cost (v1, c1) (v2, c2) =
+  if c1 = c2 then Vertex.compare v1 v2 else Int.compare c1 c2
+
+let dijkstra' map neigh_fun (sr, sc) e =
+  let m, n = size map in
+  let heap =
+    Pairing_heap.create ~min_size:((m * n * 2) + 1) ~cmp:compare_v_cost ()
+  in
+  let dists = Hashtbl.create ~size:((m * n * 2) + 1) (module Vertex) in
+  Pairing_heap.add heap ((sr, sc, V), 0);
+  Pairing_heap.add heap ((sr, sc, H), 0);
+  let rec relax () =
     match get_dist dists e with
     | Some d -> d
     | None -> (
-        let curr_v, curr_cost = Set.min_elt_exn heap in
-        let heap' = Set.remove heap (curr_v, curr_cost) in
-        match Map.add dists ~key:curr_v ~data:curr_cost with
-        | `Ok dists' ->
-            let heap' =
-              neigh_fun map curr_v
-              |> List.filter ~f:(fun (n, _) -> Map.mem dists' n |> not)
-              |> List.fold ~init:heap' ~f:(fun acc (n, c) ->
-                     Set.add acc (n, curr_cost + c))
-            in
-            relax dists' heap'
-        | `Duplicate -> relax dists heap')
+        let curr_v, curr_cost = Pairing_heap.pop heap |> Option.value_exn in
+        match Hashtbl.add dists ~key:curr_v ~data:curr_cost with
+        | `Ok ->
+            neigh_fun map curr_v
+            |> List.filter ~f:(fun (n, _) -> Hashtbl.mem dists n |> not)
+            |> List.iter ~f:(fun (n, c) ->
+                   Pairing_heap.add heap (n, c + curr_cost));
+            relax ()
+        | `Duplicate -> relax ())
   in
-  relax init_dists init_heap
+  relax ()
 
 let dijkstra map neigh_fun (sr, sc) e =
-  try
-    [ V; H ]
-    |> List.map ~f:(fun d -> dijkstra' map neigh_fun (sr, sc, d) e)
-    |> List.min_elt ~compare:Int.compare
-  with _ -> None
+  try Some (dijkstra' map neigh_fun (sr, sc) e) with _ -> None
 
 let () =
   let map = read_input in
