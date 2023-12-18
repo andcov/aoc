@@ -13,7 +13,7 @@ let read_input =
   In_channel.read_lines "input.in"
   |> List.map ~f:(fun s ->
          match String.split s ~on:' ' with
-         | [ dir; num; col ] -> (dir_of_string dir, Int.of_string num, col)
+         | [ dir; num; _ ] -> (dir_of_string dir, Int.of_string num)
          | _ -> failwith "wrong input")
 
 let size dirs =
@@ -33,60 +33,74 @@ let size dirs =
   in
   (m, n)
 
-module Pos = struct
-  type t = int * int [@@deriving sexp, hash, show, eq, ord]
+module Interval = struct
+  (* inclusive interval: [l; r] *)
+  type t = { l : int; r : int } [@@deriving sexp, show, eq]
+
+  let compare i1 i2 = if i1.r < i2.l then -1 else if i1.l > i2.r then 1 else 0
+  let ( >< ) a b = { l = Int.min a b; r = Int.max a b }
+  let length { l; r } = r - l + 1
+
+  let inter i1 i2 =
+    if compare i1 i2 = 0 then Some (Int.max i1.l i2.l >< Int.min i1.r i2.r)
+    else None
 end
 
-let empty_neighbours tbl (i, j) =
-  [ (1, 0); (-1, 0); (0, 1); (0, -1) ]
-  |> List.filter_map ~f:(fun (di, dj) ->
-         if Hashtbl.mem tbl (i + di, j + dj) |> not then Some (i + di, j + dj)
-         else None)
+include Interval
+module IntvSet = Set.Make (Interval)
+module IntMap = Map.Make (Int)
 
-let rec fill tbl q =
-  match q with
-  | [] -> ()
-  | pos :: tl ->
-      if Hashtbl.mem tbl pos |> not then (
-        Hashtbl.add_exn tbl ~key:pos ~data:"";
-        let neigh = empty_neighbours tbl pos in
-        fill tbl (neigh @ tl))
-      else fill tbl tl
+let compl intvs int =
+  let last_int = Set.max_elt_exn intvs in
+  let init_set =
+    if last_int.r = int.r then IntvSet.empty
+    else IntvSet.singleton (last_int.r + 1 >< int.r)
+  in
+  Set.fold intvs ~init:(int.l, init_set) ~f:(fun (prvr, set) i ->
+      let set' = if prvr = i.l then set else Set.add set (prvr >< i.l - 1) in
+      (i.r + 1, set'))
+  |> Tuple2.get2
 
-let rec outline tbl dirs (i, j) =
+let rec interval_map map dirs i j =
   match dirs with
-  | [] -> ()
-  | (dir, num, col) :: tl -> (
-      match dir with
+  | [] -> map
+  | (d, n) :: tl -> (
+      match d with
       | U ->
-          for di = 1 to num do
-            Hashtbl.add_exn tbl ~key:(i - di, j) ~data:col
-          done;
-          outline tbl tl (i - num, j)
+          let map' = Map.add_multi map ~key:j ~data:(i - n >< i) in
+          interval_map map' tl (i - n) j
       | D ->
-          for di = 1 to num do
-            Hashtbl.add_exn tbl ~key:(i + di, j) ~data:col
-          done;
-          outline tbl tl (i + num, j)
-      | R ->
-          for dj = 1 to num do
-            Hashtbl.add_exn tbl ~key:(i, j + dj) ~data:col
-          done;
-          outline tbl tl (i, j + num)
-      | L ->
-          for dj = 1 to num do
-            Hashtbl.add_exn tbl ~key:(i, j - dj) ~data:col
-          done;
-          outline tbl tl (i, j - num))
+          let map' = Map.add_multi map ~key:j ~data:(i >< i + n) in
+          interval_map map' tl (i + n) j
+      | L -> interval_map map tl i (j - n)
+      | R -> interval_map map tl i (j + n))
+
+let rec dig map x int is_inside =
+  let rec next_x cx =
+    match Map.closest_key map `Greater_than cx with
+    | Some (nx, intvs) -> if Set.mem intvs int then (nx, intvs) else next_x nx
+    | None -> Map.max_elt_exn map
+  in
+  let nx, nintvs = next_x x in
+  if nx = x then 0
+  else
+    let nintvs = IntvSet.filter_map nintvs ~f:(fun i -> inter i int) in
+    let compls = compl nintvs int in
+    printf "Main int %s at %d is %s\n" (show int) x
+      (if is_inside then "inside" else "outside");
+    Set.iter nintvs ~f:(fun i -> printf "\tsame: %s at %d\n" (show i) nx);
+    Set.iter compls ~f:(fun i -> printf "\tcompl: %s at %d\n" (show i) nx);
+    print_endline "";
+    Set.fold nintvs ~init:0 ~f:(fun acc s -> acc + dig map nx s (not is_inside))
+    + Set.fold compls ~init:0 ~f:(fun acc s -> acc + dig map nx s is_inside)
+(* let sum = if is_inside then (nx - x) * length int else 0 in *)
 
 let () =
   let dirs = read_input in
+  let map =
+    interval_map IntMap.empty dirs 0 0
+    |> Map.map ~f:(fun l -> IntvSet.of_list l)
+  in
+  let _ = dig map (-1) (0 >< 9) false in
   (* let m, n = size dirs in *)
-  let size = 1 + List.fold dirs ~init:0 ~f:(fun acc (_, n, _) -> acc + n) in
-  let tbl = Hashtbl.create ~size ~growth_allowed:false (module Pos) in
-  outline tbl dirs (0, 0);
-  fill tbl [ (1, 1) ];
-  (* Array.iter map ~f:(fun r -> *)
-  (*     Array.iter r ~f:(fun b -> if b then printf "#" else printf "."); *)
-  (*     print_endline ""); *)
-  printf "%d\n" (Hashtbl.length tbl)
+  ()
