@@ -1,6 +1,6 @@
 open Core
 
-type dir = R | L | D | U
+type dir = R | L | D | U [@@deriving eq, show]
 
 let dir_of_string = function
   | "R" -> R
@@ -9,98 +9,124 @@ let dir_of_string = function
   | "D" -> D
   | _ -> failwith "wrong dir"
 
+let col_to_dir col =
+  if Str.string_match (Str.regexp "(#\\([a-z0-9]+\\)\\([0-4]\\))") col 0 then
+    let num = "0x" ^ Str.matched_group 1 col |> Int.of_string in
+    let dir =
+      match Str.matched_group 2 col with
+      | "0" -> R
+      | "1" -> D
+      | "2" -> L
+      | "3" -> U
+      | _ -> failwith "wrongg format"
+    in
+    (dir, num)
+  else failwith "wronggg format"
+
 let read_input =
   In_channel.read_lines "input.in"
   |> List.map ~f:(fun s ->
          match String.split s ~on:' ' with
-         | [ dir; num; _ ] -> (dir_of_string dir, Int.of_string num)
+         | [ dir; num; col ] ->
+             ((dir_of_string dir, Int.of_string num), col_to_dir col)
          | _ -> failwith "wrong input")
 
-let size dirs =
-  let n, _ =
-    List.fold dirs ~init:(1, 1) ~f:(fun (max, sum) (dir, num, _) ->
-        let sum' =
-          match dir with R -> sum + num | L -> sum - num | _ -> sum
-        in
-        (Int.max max sum', sum'))
-  in
-  let m, _ =
-    List.fold dirs ~init:(1, 1) ~f:(fun (max, sum) (dir, num, _) ->
-        let sum' =
-          match dir with D -> sum + num | U -> sum - num | _ -> sum
-        in
-        (Int.max max sum', sum'))
-  in
-  (m, n)
+module Line = struct
+  type pos = { x : int; y : int } [@@deriving sexp, show, eq]
+  type ori = V | H [@@deriving sexp, show, eq]
+  type t = { f : pos; t : pos; o : ori } [@@deriving sexp, show, eq]
 
-module Interval = struct
-  (* inclusive interval: [l; r] *)
-  type t = { l : int; r : int } [@@deriving sexp, show, eq]
-
-  let compare i1 i2 = if i1.r < i2.l then -1 else if i1.l > i2.r then 1 else 0
-  let ( >< ) a b = { l = Int.min a b; r = Int.max a b }
-  let length { l; r } = r - l + 1
-
-  let inter i1 i2 =
-    if compare i1 i2 = 0 then Some (Int.max i1.l i2.l >< Int.min i1.r i2.r)
-    else None
+  let create ~f:(fx, fy) ~t:(tx, ty) =
+    let ori =
+      if fx = tx then V
+      else if fy = ty then H
+      else failwith "line is not straight"
+    in
+    { f = { x = fx; y = fy }; t = { x = tx; y = ty }; o = ori }
 end
 
-include Interval
-module IntvSet = Set.Make (Interval)
-module IntMap = Map.Make (Int)
+include Line
 
-let compl intvs int =
-  let last_int = Set.max_elt_exn intvs in
-  let init_set =
-    if last_int.r = int.r then IntvSet.empty
-    else IntvSet.singleton (last_int.r + 1 >< int.r)
+let det p1 p2 = (p1.x * p2.y) - (p1.y * p2.x)
+
+let solve dirs =
+  let lines =
+    List.fold dirs
+      ~init:((0, 0), [])
+      ~f:(fun ((px, py), lines) (dir, num) ->
+        let npos =
+          match dir with
+          | U -> (px, py - num)
+          | D -> (px, py + num)
+          | R -> (px + num, py)
+          | L -> (px - num, py)
+        in
+        let nline = create ~f:(px, py) ~t:npos in
+        (npos, nline :: lines))
+    |> Tuple2.get2 |> List.rev |> Array.of_list
   in
-  Set.fold intvs ~init:(int.l, init_set) ~f:(fun (prvr, set) i ->
-      let set' = if prvr = i.l then set else Set.add set (prvr >< i.l - 1) in
-      (i.r + 1, set'))
-  |> Tuple2.get2
-
-let rec interval_map map dirs i j =
-  match dirs with
-  | [] -> map
-  | (d, n) :: tl -> (
-      match d with
+  let firstl =
+    if equal_ori lines.(0).o V then (0, lines.(0)) else (1, lines.(1))
+  in
+  let si, _ =
+    Array.foldi lines ~init:firstl ~f:(fun i (ai, acc) l ->
+        if equal_ori l.o H then (ai, acc)
+        else if acc.t.x < l.t.x then (i, l)
+        else (ai, acc))
+  in
+  let n = Array.length lines in
+  let co = ref R in
+  let points = Array.create ~len:n { x = 0; y = 0 } in
+  for di = 0 to n - 1 do
+    let ci = (si + di) mod n in
+    let ni = (si + di + 1) mod n in
+    let commx, commy = (lines.(ci).t.x, lines.(ci).t.y) in
+    let is_n_left = lines.(ni).f.x > lines.(ni).t.x in
+    let is_n_up = lines.(ni).f.y > lines.(ni).t.y in
+    let p =
+      match !co with
+      | R ->
+          if is_n_left then (
+            co := D;
+            { x = commx + 1; y = commy + 1 })
+          else (
+            co := U;
+            { x = commx + 1; y = commy })
+      | L ->
+          if is_n_left then (
+            co := D;
+            { x = commx; y = commy + 1 })
+          else (
+            co := U;
+            { x = commx; y = commy })
       | U ->
-          let map' = Map.add_multi map ~key:j ~data:(i - n >< i) in
-          interval_map map' tl (i - n) j
+          if is_n_up then (
+            co := L;
+            { x = commx; y = commy })
+          else (
+            co := R;
+            { x = commx + 1; y = commy })
       | D ->
-          let map' = Map.add_multi map ~key:j ~data:(i >< i + n) in
-          interval_map map' tl (i + n) j
-      | L -> interval_map map tl i (j - n)
-      | R -> interval_map map tl i (j + n))
-
-let rec dig map x int is_inside =
-  let rec next_x cx =
-    match Map.closest_key map `Greater_than cx with
-    | Some (nx, intvs) -> if Set.mem intvs int then (nx, intvs) else next_x nx
-    | None -> Map.max_elt_exn map
-  in
-  let nx, nintvs = next_x x in
-  if nx = x then 0
-  else
-    let nintvs = IntvSet.filter_map nintvs ~f:(fun i -> inter i int) in
-    let compls = compl nintvs int in
-    printf "Main int %s at %d is %s\n" (show int) x
-      (if is_inside then "inside" else "outside");
-    Set.iter nintvs ~f:(fun i -> printf "\tsame: %s at %d\n" (show i) nx);
-    Set.iter compls ~f:(fun i -> printf "\tcompl: %s at %d\n" (show i) nx);
-    print_endline "";
-    Set.fold nintvs ~init:0 ~f:(fun acc s -> acc + dig map nx s (not is_inside))
-    + Set.fold compls ~init:0 ~f:(fun acc s -> acc + dig map nx s is_inside)
-(* let sum = if is_inside then (nx - x) * length int else 0 in *)
+          if is_n_up then (
+            co := L;
+            { x = commx; y = commy + 1 })
+          else (
+            co := R;
+            { x = commx + 1; y = commy + 1 })
+    in
+    points.(di) <- p
+  done;
+  let sum = ref 0 in
+  for i = 0 to n - 1 do
+    let cp = points.(i) in
+    let np = points.((i + 1) mod n) in
+    sum := !sum + det cp np
+  done;
+  !sum / 2
 
 let () =
-  let dirs = read_input in
-  let map =
-    interval_map IntMap.empty dirs 0 0
-    |> Map.map ~f:(fun l -> IntvSet.of_list l)
-  in
-  let _ = dig map (-1) (0 >< 9) false in
-  (* let m, n = size dirs in *)
+  let dirs, col_dirs = List.unzip read_input in
+  let s1 = solve dirs in
+  let s2 = solve col_dirs in
+  printf "Part 1: %d\nPart 2: %d\n" s1 s2;
   ()
