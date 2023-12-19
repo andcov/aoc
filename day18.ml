@@ -86,34 +86,22 @@ let solve dirs =
     let p =
       match !co with
       | R ->
-          if is_n_left then (
-            co := D;
-            { x = commx + 1; y = commy + 1 })
-          else (
-            co := U;
-            { x = commx + 1; y = commy })
+          if is_n_left then { x = commx + 1; y = commy + 1 }
+          else { x = commx + 1; y = commy }
       | L ->
-          if is_n_left then (
-            co := D;
-            { x = commx; y = commy + 1 })
-          else (
-            co := U;
-            { x = commx; y = commy })
+          if is_n_left then { x = commx; y = commy + 1 }
+          else { x = commx; y = commy }
       | U ->
-          if is_n_up then (
-            co := L;
-            { x = commx; y = commy })
-          else (
-            co := R;
-            { x = commx + 1; y = commy })
+          if is_n_up then { x = commx; y = commy }
+          else { x = commx + 1; y = commy }
       | D ->
-          if is_n_up then (
-            co := L;
-            { x = commx; y = commy + 1 })
-          else (
-            co := R;
-            { x = commx + 1; y = commy + 1 })
+          if is_n_up then { x = commx; y = commy + 1 }
+          else { x = commx + 1; y = commy + 1 }
     in
+    (co :=
+       match !co with
+       | R | L -> if is_n_left then D else U
+       | U | D -> if is_n_up then L else R);
     points.(di) <- p
   done;
   let sum = ref 0 in
