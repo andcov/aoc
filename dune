@@ -102,3 +102,9 @@
  (libraries core re)
  (preprocess (pps ppx_deriving.show ppx_deriving.eq ppx_deriving.ord ppx_jane ppx_hash))
  (modules Day19))
+
+(executable
+ (name day20)
+ (libraries core re str)
+ (preprocess (pps ppx_deriving.show ppx_deriving.eq ppx_deriving.ord ppx_jane ppx_hash))
+ (modules Day20))
