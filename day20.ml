@@ -1,17 +1,50 @@
 open Core
+module SM = Map.Make (String)
+module SS = Set.Make (String)
 
-let ( <-> ) s e =
-  if s > e then failwith "start greater than end"
-  else List.init (e - s) ~f:(fun n -> n + s)
+type ff_state = On | Off
+type pulse_intens = Low | High
 
-module StrMap = Map.Make (String)
+let show_intens = function Low -> "low" | High -> "high"
 
-type module_typ = FF of bool | Conj of bool StrMap.t | Broad
+type module_typ =
+  | FlipFlop of ff_state
+  | Conj of pulse_intens SM.t
+  | Broadcast
+  | Endpoint
 
-let group_to_neigh str =
-  Str.global_replace (Str.regexp " ") "" str |> String.split ~on:','
+type pulse = { src : string; dest : string; intens : pulse_intens }
+
+let add_conj map =
+  let conjs =
+    map |> Map.to_alist
+    |> List.filter_map ~f:(fun (name, (typ, _)) ->
+           match typ with Conj _ -> Some name | _ -> None)
+  in
+  List.fold conjs ~init:map ~f:(fun map' conj ->
+      let conj_neighs =
+        Map.filter_mapi map' ~f:(fun ~key:name ~data:(_, neighs) ->
+            if List.mem neighs conj ~equal:String.equal then Some Low else None)
+      in
+      Map.update map' conj ~f:(fun option ->
+          let _, neighs = Option.value_exn option in
+          (Conj conj_neighs, neighs)))
+
+let add_endpoints map =
+  let all_neighbours =
+    map
+    |> Map.fold ~init:SS.empty ~f:(fun ~key:_ ~data:(_, neighbours) set ->
+           SS.of_list neighbours |> Set.union set)
+  in
+  Set.fold all_neighbours ~init:map ~f:(fun map' neigh ->
+      Map.change map' neigh ~f:(function
+        | None -> Some (Endpoint, [])
+        | Some v -> Some v))
 
 let read_input =
+  let group_to_neigh str =
+    Str.global_replace (Str.regexp " ") "" str |> String.split ~on:','
+  in
   let reg =
     Re.(
       seq
@@ -23,107 +56,106 @@ let read_input =
         ]
       |> compile)
   in
-  In_channel.read_lines "input.in"
-  |> List.fold ~init:StrMap.empty ~f:(fun map l ->
-         let grs = Re.exec reg l in
-         let name = Re.Group.get grs 1 in
-         let neigh = Re.Group.get grs 2 |> group_to_neigh in
-         let typ =
-           if String.mem l '%' then FF false
-           else if String.mem l '&' then Conj StrMap.empty
-           else Broad
-         in
-         Map.add_exn map ~key:name ~data:(typ, neigh))
+  let map =
+    In_channel.read_lines "input.in"
+    |> List.fold ~init:SM.empty ~f:(fun map l ->
+           let grs = Re.exec reg l in
+           let name = Re.Group.get grs 1 in
+           let neigh = Re.Group.get grs 2 |> group_to_neigh in
+           let typ =
+             if String.mem l '%' then FlipFlop Off
+             else if String.mem l '&' then Conj SM.empty
+             else Broadcast
+           in
+           Map.add_exn map ~key:name ~data:(typ, neigh))
+  in
+  map |> add_endpoints |> add_conj
 
-let rec add_conj mlist map =
-  match mlist with
-  | [] -> map
-  | (name, (_, neighs)) :: tl ->
-      let map' =
-        List.fold neighs ~init:map ~f:(fun acc neigh ->
-            Map.change acc neigh ~f:(fun neigh_d ->
-                match neigh_d with
-                | None -> None
-                | Some (ntyp, nneigh) -> (
-                    match ntyp with
-                    | Conj deps ->
-                        let deps' = Map.add_exn deps ~key:name ~data:false in
-                        Some (Conj deps', nneigh)
-                    | _ -> Some (ntyp, nneigh))))
-      in
-      add_conj tl map'
-
-let rec pulse q map =
-  match Queue.dequeue q with
-  | None -> (map, 1, 0)
-  | Some (name, from, p) -> (
-      match Map.find map name with
-      | None -> pulse q map
-      | Some m ->
-          let map', low, high =
-            match m with
-            | Broad, neigh ->
-                List.iter neigh ~f:(fun n ->
-                    printf "%s -%b-> %s\n" name false n;
-                    Queue.enqueue q (n, name, false));
-                (map, List.length neigh, 0)
-            | FF state, neigh ->
-                if p then (map, 0, 0)
-                else
-                  let map' =
-                    Map.change map name ~f:(fun _ ->
-                        Some (FF (not state), neigh))
-                  in
-                  List.iter neigh ~f:(fun n ->
-                      printf "%s -%b-> %s\n" name (not state) n;
-                      Queue.enqueue q (n, name, not state));
-                  let low_cnt = if state then 0 else List.length neigh in
-                  (map', low_cnt, List.length neigh - low_cnt)
-            | Conj deps, neigh ->
-                let deps' = Map.change deps from ~f:(fun _ -> Some p) in
-                let map' =
-                  Map.change map name ~f:(fun _ -> Some (Conj deps', neigh))
-                in
-                let all_high = Map.for_all deps' ~f:Fn.id in
-                List.iter neigh ~f:(fun n ->
-                    printf "%s -%b-> %s\n" name (not all_high) n;
-                    Queue.enqueue q (n, name, not all_high));
-                let low_cnt = if all_high then List.length neigh else 0 in
-                (map', low_cnt, List.length neigh - low_cnt)
+let process_pulse queue map =
+  match queue with
+  | [] -> ([], map)
+  | p :: q -> (
+      match Map.find_exn map p.dest with
+      | Broadcast, neighs ->
+          ( List.map neighs ~f:(fun neigh ->
+                { src = p.dest; dest = neigh; intens = Low }),
+            map )
+      | FlipFlop state, neighs -> (
+          match p.intens with
+          | Low ->
+              let state', intens' =
+                match state with Off -> (On, High) | On -> (Off, Low)
+              in
+              ( q
+                @ List.map neighs ~f:(fun neigh ->
+                      { src = p.dest; dest = neigh; intens = intens' }),
+                Map.update map p.dest ~f:(fun _ -> (FlipFlop state', neighs)) )
+          | High -> (q, map))
+      | Conj deps, neighs ->
+          let deps' = Map.update deps p.src ~f:(fun _ -> p.intens) in
+          let all_high =
+            Map.for_all deps' ~f:(function High -> true | Low -> false)
           in
-          let map', rec_low, rec_high = pulse q map' in
-          (map', low + rec_low, high + rec_high))
+          let intens' = if all_high then Low else High in
+          ( q
+            @ List.map neighs ~f:(fun neigh ->
+                  { src = p.dest; dest = neigh; intens = intens' }),
+            Map.update map p.dest ~f:(fun _ -> (Conj deps', neighs)) )
+      | Endpoint, _ -> (q, map))
+
+let press_button map =
+  let rec process_pulse' q map pulses =
+    match q with
+    | p :: q ->
+        let q', map' = process_pulse (p :: q) map in
+        process_pulse' q' map' (p :: pulses)
+    | [] -> (pulses, map)
+  in
+  process_pulse'
+    [ { src = "button"; dest = "broadcaster"; intens = Low } ]
+    map []
+
+let part1 map =
+  Seq.unfold
+    (fun map ->
+      let pulses, map' = press_button map in
+      Some (pulses, map'))
+    map
+  |> Seq.take 1000
+  |> Seq.flat_map
+       (List.fold ~init:Seq.empty ~f:(fun seq pulse ->
+            Seq.cons pulse.intens seq))
+  |> Seq.partition (phys_equal Low)
+  |> fun (ls, hs) -> Seq.length ls * Seq.length hs
+
+let rec gcd a b = if b = 0 then a else gcd b (a mod b)
+let lcm a b = a * b / gcd a b
+
+(* big copout tbh, I don't think this works in general, it is very input dependent *)
+let part2 map =
+  let rx_src =
+    Map.to_alist map
+    |> List.filter_map ~f:(fun (name, (_, neighs)) ->
+           if List.mem neighs "rx" ~equal:String.equal then Some name else None)
+    |> List.hd_exn
+  in
+  (match Map.find_exn map rx_src with
+  | Conj deps, _ -> deps
+  | _ -> failwith "rx_src is not a conjunction")
+  |> Map.keys
+  |> List.map ~f:(fun dep ->
+         Seq.unfold
+           (fun map ->
+             let pulses, map' = press_button map in
+             Some (pulses, map'))
+           map
+         |> Seq.take_while (fun pulses ->
+                List.exists pulses ~f:(fun pulse ->
+                    String.equal pulse.src dep && phys_equal High pulse.intens)
+                |> not)
+         |> Seq.length |> Int.succ)
+  |> List.fold ~init:1 ~f:lcm
 
 let () =
   let map = read_input in
-  let map = add_conj (Map.to_alist map) map in
-
-  (* Map.iteri map ~f:(fun ~key ~data -> *)
-  (*     printf "module %s: " key; *)
-  (*     match data with *)
-  (*     | Broad, neigh -> *)
-  (*         printf "broad\n"; *)
-  (*         List.iter neigh ~f:(printf "%s  "); *)
-  (*         printf "\n\n" *)
-  (*     | FF _, neigh -> *)
-  (*         printf "flip flop\n"; *)
-  (*         List.iter neigh ~f:(printf "%s  "); *)
-  (*         printf "\n\n" *)
-  (*     | Conj deps, neigh -> *)
-  (*         printf "conj\nDeps: "; *)
-  (*         Map.iter_keys deps ~f:(printf "%s  "); *)
-  (*         printf "\nNeigh: "; *)
-  (*         List.iter neigh ~f:(printf "%s  "); *)
-  (*         printf "\n\n"); *)
-  let _, l, h =
-    0 <-> 1
-    |> List.fold ~init:(map, 0, 0) ~f:(fun (m, l, h) _ ->
-           let q = Queue.create () in
-           Queue.enqueue q ("broadcaster", "", false);
-           let m', l', h' = pulse q m in
-           printf "\n\n";
-           (m', l + l', h + h'))
-  in
-  (* 880928730 *)
-  printf "Part 1: %d %d\n" l h;
-  ()
+  printf "Part 1: %d\nPart 2: %d\n" (part1 map) (part2 map)
